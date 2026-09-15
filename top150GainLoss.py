@@ -56,6 +56,8 @@ class MarketPage:
 		self.status.pack(pady=8)
 		self.table = ttk.Treeview(window, columns=("share", "price", "change"),
 								  show="headings")
+		self.table.tag_configure("gain", foreground="#166534")
+		self.table.tag_configure("loss", foreground="#b91c1c")
 		for column, title in (("share", "Share"), ("price", "Price (₹)"),
 							  ("change", "Change (%)")):
 			self.table.heading(column, text=title)
@@ -71,7 +73,8 @@ class MarketPage:
 				self.table.delete(item)
 			for _, row in rows.iterrows():
 				self.table.insert("", "end", values=(row.Share, f"{row.Price:.2f}",
-													   f"{row.Change:+.2f}%"))
+															   f"{row.Change:+.2f}%"),
+															 tags=("gain" if row.Change >= 0 else "loss",))
 			self.status.config(text="Top 50 gainers, then top 50 losers | Yahoo Finance")
 		except Exception as error:
 			self.status.config(text="Could not load market data")

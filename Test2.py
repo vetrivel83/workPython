@@ -3,6 +3,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 import yfinance as yf
+from top150GainLoss import fetch_prices
 
 
 st.set_page_config(
@@ -10,6 +11,34 @@ st.set_page_config(
 	page_icon="IN",
 	layout="wide",
 )
+
+
+def style_gain_loss(row: pd.Series) -> list[str]:
+	if row["Category"] == "Gainer":
+		return ["color: #166534; background-color: #dcfce7"] * len(row)
+	return ["color: #b91c1c; background-color: #fee2e2"] * len(row)
+
+
+menu_page = st.sidebar.selectbox("Menu", ("India Market Pulse", "Top 150 gain/loss"))
+
+if menu_page == "Top 150 gain/loss":
+	st.title("Top 150 Gainers and Losers")
+	st.caption("Top 50 gainers followed by top 50 losers from the NSE share universe")
+	try:
+		with st.spinner("Loading market data..."):
+			prices = fetch_prices()
+		display_prices = pd.concat(
+			(prices.head(50).assign(Category="Gainer"), prices.tail(50).assign(Category="Loser")),
+			ignore_index=True,
+		)
+		st.dataframe(
+			display_prices.style.apply(style_gain_loss, axis=1),
+			hide_index=True,
+			use_container_width=True,
+		)
+	except Exception as error:
+		st.error(f"Unable to load top 150 data: {error}")
+	st.stop()
 
 
 NSE_WATCHLIST = {
@@ -67,8 +96,6 @@ def load_market_data() -> tuple[pd.DataFrame, datetime]:
 
 	data = pd.DataFrame(rows).sort_values("Price (INR)", ascending=False).reset_index(drop=True)
 	return data, datetime.now()
-
-
 def format_change(value: float) -> str:
 	return f"{'+' if value >= 0 else ''}{value:.2f}%"
 
