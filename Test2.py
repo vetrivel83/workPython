@@ -3,7 +3,41 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 import yfinance as yf
-from top150GainLoss import fetch_prices
+
+
+SYMBOLS = """ADANIENT ADANIPORTS APOLLOHOSP ASIANPAINT AXISBANK BAJAJ-AUTO
+BAJFINANCE BAJAJFINSV BEL BHARTIARTL BPCL BRITANNIA CIPLA COALINDIA
+DRREDDY EICHERMOT ETERNAL GRASIM HCLTECH HDFCBANK HDFCLIFE HEROMOTOCO
+HINDALCO HINDUNILVR ICICIBANK INDUSINDBK INFY IOC ITC JIOFIN JSWSTEEL
+KOTAKBANK LT M&M MARUTI MAXHEALTH NESTLEIND NTPC ONGC POWERGRID RELIANCE
+SBILIFE SBIN SHRIRAMFIN SUNPHARMA TATACONSUM TATAMOTORS TATASTEEL TCS
+TECHM TITAN TRENT ULTRACEMCO WIPRO""".split()
+
+
+def fetch_prices() -> pd.DataFrame:
+	tickers = [f"{symbol}.NS" for symbol in SYMBOLS]
+	data = yf.download(
+		tickers,
+		period="5d",
+		interval="1d",
+		auto_adjust=False,
+		progress=False,
+		threads=True,
+	)
+	close = data["Close"]
+	if isinstance(close, pd.Series):
+		close = close.to_frame()
+	if len(close) < 2:
+		raise RuntimeError("Not enough market data returned.")
+	latest, previous = close.iloc[-1], close.iloc[-2]
+	result = pd.DataFrame(
+		{
+			"Share": [name.replace(".NS", "") for name in latest.index],
+			"Price": latest.values,
+			"Change": ((latest.values - previous.values) / previous.values) * 100,
+		}
+	).dropna()
+	return result.sort_values("Change", ascending=False)
 
 
 st.set_page_config(
