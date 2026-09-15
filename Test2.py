@@ -32,12 +32,15 @@ def fetch_prices() -> pd.DataFrame:
 	latest, previous = close.iloc[-1], close.iloc[-2]
 	result = pd.DataFrame(
 		{
-			"Share": [name.replace(".NS", "") for name in latest.index],
-			"Price": latest.values,
-			"Change": ((latest.values - previous.values) / previous.values) * 100,
+			"Company / Share": [name.replace(".NS", "") for name in latest.index],
+			"NSE Ticker": [name.replace(".NS", "") for name in latest.index],
+			"Current Price (INR)": latest.values,
+			"Previous Close (INR)": previous.values,
+			"Change (INR)": latest.values - previous.values,
+			"Change (%)": ((latest.values - previous.values) / previous.values) * 100,
 		}
 	).dropna()
-	return result.sort_values("Change", ascending=False)
+	return result.sort_values("Change (%)", ascending=False).reset_index(drop=True)
 
 
 st.set_page_config(
@@ -61,12 +64,27 @@ if menu_page == "Top 150 gain/loss":
 	try:
 		with st.spinner("Loading market data..."):
 			prices = fetch_prices()
+		gainers = prices.head(50).copy()
+		gainers["Category"] = "Gainer"
+		losers = prices.tail(50).sort_values("Change (%)", ascending=True).copy()
+		losers["Category"] = "Loser"
 		display_prices = pd.concat(
-			(prices.head(50).assign(Category="Gainer"), prices.tail(50).assign(Category="Loser")),
+			(gainers, losers),
 			ignore_index=True,
 		)
+		display_prices.insert(0, "Rank", range(1, len(display_prices) + 1))
+		display_prices["Updated"] = datetime.now().strftime("%d %b %Y, %I:%M %p")
 		st.dataframe(
-			display_prices.style.apply(style_gain_loss, axis=1),
+			display_prices.style
+			.apply(style_gain_loss, axis=1)
+			.format(
+				{
+					"Current Price (INR)": "{:.2f}",
+					"Previous Close (INR)": "{:.2f}",
+					"Change (INR)": "{:+.2f}",
+					"Change (%)": "{:+.2f}%",
+				}
+			),
 			hide_index=True,
 			use_container_width=True,
 		)
