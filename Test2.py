@@ -34,6 +34,7 @@ def fetch_prices() -> pd.DataFrame:
 		{
 			"Company / Share": [name.replace(".NS", "") for name in latest.index],
 			"NSE Ticker": [name.replace(".NS", "") for name in latest.index],
+			"Exchange": "NSE",
 			"Current Price (INR)": latest.values,
 			"Previous Close (INR)": previous.values,
 			"Change (INR)": latest.values - previous.values,
@@ -41,6 +42,42 @@ def fetch_prices() -> pd.DataFrame:
 		}
 	).dropna()
 	return result.sort_values("Change (%)", ascending=False).reset_index(drop=True)
+
+
+def fetch_52_week_low_prices() -> pd.DataFrame:
+	tickers = [f"{symbol}.NS" for symbol in SYMBOLS]
+	data = yf.download(
+		tickers,
+		period="1y",
+		interval="1d",
+		auto_adjust=False,
+		progress=False,
+		threads=True,
+	)
+	if data.empty:
+		raise RuntimeError("No 52-week market data returned.")
+
+	close = data["Close"]
+	if isinstance(close, pd.Series):
+		close = close.to_frame()
+	current = close.iloc[-1]
+	week_low = close.min()
+	result = pd.DataFrame(
+		{
+			"Company / Share": [name.replace(".NS", "") for name in current.index],
+			"NSE Ticker": [name.replace(".NS", "") for name in current.index],
+			"Exchange": "NSE",
+			"Current Price (INR)": current.values,
+			"52 Week Low (INR)": week_low.values,
+		}
+	).dropna()
+	result["Distance from Low (INR)"] = (
+		result["Current Price (INR)"] - result["52 Week Low (INR)"]
+	)
+	result["Distance from Low (%)"] = (
+		result["Distance from Low (INR)"] / result["52 Week Low (INR)"] * 100
+	)
+	return result.sort_values("Distance from Low (%)").head(50).reset_index(drop=True)
 
 
 st.set_page_config(
@@ -56,17 +93,21 @@ def style_gain_loss(row: pd.Series) -> list[str]:
 	return ["color: #b91c1c; background-color: #fee2e2"] * len(row)
 
 
-menu_page = st.sidebar.selectbox("Menu", ("India Market Pulse", "Top 150 gain/loss"))
+menu_page = st.sidebar.selectbox(
+	"Menu",
+	("India Market Pulse", "Top 150 gain/loss", "Top 50 52-week low"),
+)
 
 if menu_page == "Top 150 gain/loss":
 	st.title("Top 150 Gainers and Losers")
-	st.caption("Top 50 gainers followed by top 50 losers from the NSE share universe")
+	st.caption("Gainers and losers from the available NSE share universe")
 	try:
 		with st.spinner("Loading market data..."):
 			prices = fetch_prices()
-		gainers = prices.head(50).copy()
+		gainer_count = min(50, max(1, len(prices) // 2))
+		gainers = prices.head(gainer_count).copy()
 		gainers["Category"] = "Gainer"
-		losers = prices.tail(50).sort_values("Change (%)", ascending=True).copy()
+		losers = prices.tail(len(prices) - gainer_count).sort_values("Change (%)", ascending=True).copy()
 		losers["Category"] = "Loser"
 		display_prices = pd.concat(
 			(gainers, losers),
@@ -90,6 +131,31 @@ if menu_page == "Top 150 gain/loss":
 		)
 	except Exception as error:
 		st.error(f"Unable to load top 150 data: {error}")
+	st.stop()
+
+
+if menu_page == "Top 50 52-week low":
+	st.title("Top 50 Shares Near 52-Week Low")
+	st.caption("NSE shares currently closest to their lowest price over the last year")
+	try:
+		with st.spinner("Loading 52-week low data..."):
+			low_prices = fetch_52_week_low_prices()
+		low_prices.insert(0, "Rank", range(1, len(low_prices) + 1))
+		low_prices["Updated"] = datetime.now().strftime("%d %b %Y, %I:%M %p")
+		st.dataframe(
+			low_prices.style.format(
+				{
+					"Current Price (INR)": "{:.2f}",
+					"52 Week Low (INR)": "{:.2f}",
+					"Distance from Low (INR)": "{:.2f}",
+					"Distance from Low (%)": "{:.2f}%",
+				}
+			),
+			hide_index=True,
+			use_container_width=True,
+		)
+	except Exception as error:
+		st.error(f"Unable to load 52-week low data: {error}")
 	st.stop()
 
 
